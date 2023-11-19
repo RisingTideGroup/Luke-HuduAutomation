@@ -1,18 +1,18 @@
 #Gerocoding function is from https://www.powershellgallery.com/packages/GoogleMap/1.0.0.3/Content/GoogleMap.psm1 by Prateek Singh
 #####################################################################
 # Get a Hudu API Key from https://yourhududomain.com/admin/api_keys
-$HuduAPIKey = "abcdefghi12345678"
+$HuduAPIKey = "abcdefghijklmnopqrstuvwcyz"
 # Set the base domain of your Hudu instance without a trailing /
-$HuduBaseDomain = "https://your.hudu.domain"
+$HuduBaseDomain = "https://hudu.domain.com"
 $HuduAssetLayoutName = "Locations Map"
 #####################################################################
 # Settings
 #THe name of the Asset layout where you sync customer locations to
-$HuduLocationAsset = "Sites"
+$HuduLocationAsset = "Locations"
 #Set the name of the customer you would like the map of all customer locations created in.
-$HuduMasterCustomer = "Your Internal Company"
+$HuduMasterCustomer = "Your Company Name"
 # Google Maps API key. You will need to enable the Geocoding API https://developers.google.com/maps/documentation/geocoding/get-api-key and the Places API https://developers.google.com/maps/documentation/javascript/cloud-setup
-$GoogleGeocode_API_Key = "abcdefghijklmnop123456787"
+$GoogleGeocode_API_Key = "some-google-api-key"
 
 Function Get-GeoCoding
 {
@@ -70,6 +70,14 @@ Function Get-GeoCoding
             }
         }
     }     
+}
+
+function Get-HuduAssetFieldValue {
+    param(
+        $Asset,
+        $FieldName
+    )
+    return ($Asset.fields | Where-Object {$_.label -eq $FieldName}).value
 }
 
 Function Generate-HTML{
@@ -196,26 +204,27 @@ $companies = Get-HuduCompanies
 $allAddresses = [System.Collections.ArrayList]@()
 
 foreach ($company in $companies){
+    Write-Host "Processing $($Company.name)" -ForegroundColor Yellow;
 	$companyAddresses = [System.Collections.ArrayList]@()
 	$locations = Get-HuduAssets -assetlayoutid $SiteLayout.id -companyid $company.id
 	foreach ($location in $locations){
-		if ($location.cards.data.address1){
-			$parsed_address = "$($location.cards.data.address1)"
+        if ($address1 = Get-HuduAssetFieldValue -Asset $location -FieldName 'Address 1') {
+			$parsed_address = "$($address1)"
 			
-			if ($location.cards.data.address2){
-			$parsed_address = "$parsed_address, $($location.cards.data.address2)"	
+			if ($address2 = Get-HuduAssetFieldValue -Asset $location -FieldName 'Address 2'){
+			$parsed_address = "$parsed_address, $($address2)"	
 			}
 			
-			if ($location.cards.data.city){
-			$parsed_address = "$parsed_address, $($location.cards.data.city)"	
+			if ($city = Get-HuduAssetFieldValue -Asset $location -FieldName 'City'){
+			$parsed_address = "$parsed_address, $($city)"	
 			}
 			
-			if ($location.cards.data.state){
-			$parsed_address = "$parsed_address, $($location.cards.data.state)"	
+			if ($state = Get-HuduAssetFieldValue -Asset $location -FieldName 'State'){
+			$parsed_address = "$parsed_address, $($state)"	
 			}
 			
-			if ($location.cards.data.postalcode){
-			$parsed_address = "$parsed_address, $($location.cards.data.postalcode)"	
+			if ($postalcode = Get-HuduAssetFieldValue -Asset $location -FieldName 'Zip Code'){
+			$parsed_address = "$parsed_address, $($postalcode)"	
 			}
 				
 			$parsed_address = $parsed_address -replace "'",""
@@ -224,9 +233,9 @@ foreach ($company in $companies){
 			
 			if ($($geocoded[0].Latitude)){
 				$addrObject = [pscustomobject]@{
-					marker = "['$($location.company_name) - $($location.name)', $($geocoded[0].Latitude),$($geocoded[0].Longitude)]"
+					marker = "['$($location.company_name.replace("'","\'")) - $($location.name)', $($geocoded[0].Latitude),$($geocoded[0].Longitude)]"
 					infoWindow = "['<div class=`"info_content`">' +
-								'<h3><a href=$($location.url) target=`"_blank`">$($location.company_name) - $($location.name)</a></h3>' +
+								'<h3><a href=$($location.url) target=`"_blank`">$($location.company_name.replace("'","\'")) - $($location.name)</a></h3>' +
 								'<p>$parsed_address</p>' +
 								'</div>']"
 				}
@@ -248,7 +257,7 @@ foreach ($company in $companies){
 	$companyid = $company.id
 			
 	#Swap out # as Hudu doesn't like it when searching
-	$AssetName = "$($company.name) - Locations"
+	$AssetName = "$($Company.name) - Locations"
 	
 	#Check if there is already an asset	
 	$Asset = Get-HuduAssets -name $AssetName -companyid $companyid -assetlayoutid $Layout.id
@@ -262,13 +271,13 @@ foreach ($company in $companies){
 		Write-Host "Updating Asset"
 		$Asset = Set-HuduAsset -asset_id $Asset.id -name $AssetName -company_id $companyid -asset_layout_id $Layout.id -fields $AssetFields	
 	}
-		
+    Write-Host "Processed $($Company.name)" -ForegroundColor Green;
 	}
 }
 
 if ($allAddresses.count -gt 0){
 	$html = Generate-HTML -Addresses $allAddresses
-	
+	Write-Host "Processing Master Company" -ForegroundColor Yellow;
 	$AssetFields = @{
 					'map' 	= $html				
 				}
@@ -292,6 +301,5 @@ if ($allAddresses.count -gt 0){
 		Write-Host "Updating Asset"
 		$Asset = Set-HuduAsset -asset_id $Asset.id -name $AssetName -company_id $companyid -asset_layout_id $Layout.id -fields $AssetFields	
 	}
-		
+    Write-Host "Procesed Master Company: $($Company.name)" -ForegroundColor Green;
 }
-
